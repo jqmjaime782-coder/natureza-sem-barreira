@@ -47,7 +47,7 @@ export default function Home() {
             </div>
           </Link>
 
-          <Link href="/login" className="block bg-white/10 border border-white/20 rounded-2xl p-4 hover:bg-white/20 transition-all">
+          <Link href="/dashboard" className="block bg-white/10 border border-white/20 rounded-2xl p-4 hover:bg-white/20 transition-all">
             <div className="flex items-center gap-3">
               <span className="text-2xl">📊</span>
               <div>
