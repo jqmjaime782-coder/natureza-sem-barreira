@@ -1,10 +1,9 @@
 "use client";
 export const dynamic = "force-dynamic";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 import { getFichasA, getFichasB, deleteFichaA, deleteFichaB } from "@/lib/db";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, deleteDoc, doc, query, orderBy } from "firebase/firestore";
 import { FichaA, FichaB } from "@/lib/types";
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
@@ -12,27 +11,51 @@ import {
 } from "recharts";
 import * as XLSX from "xlsx";
 
+interface FichaC {
+  id?: string;
+  numeroEntrevista: string;
+  data: string;
+  comunidade: string;
+  entrevistador: string;
+  nomeOuCodigoPseudo: string;
+  idade: string;
+  genero: string;
+  tipoDeficiencia: string;
+  respostas: Record<string, string>;
+  citacaoPrincipal: string;
+  barreiraPrincipal: string;
+  solucaoProposta: string;
+  disponivelRota: string;
+  observacoesEntrevistador: string;
+}
+
+async function getFichasC(): Promise<FichaC[]> {
+  const q = query(collection(db, "fichas_c"), orderBy("criadoEm", "desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })) as FichaC[];
+}
+
+async function deleteFichaC(id: string) {
+  await deleteDoc(doc(db, "fichas_c", id));
+}
+
 export default function DashboardPage() {
-  const router = useRouter();
-  const [authed, setAuthed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [fichasA, setFichasA] = useState<FichaA[]>([]);
   const [fichasB, setFichasB] = useState<FichaB[]>([]);
-  const [tab, setTab] = useState<"overview" | "fichasA" | "fichasB" | "citacoes">("overview");
+  const [fichasC, setFichasC] = useState<FichaC[]>([]);
+  const [tab, setTab] = useState<"overview" | "fichasA" | "fichasB" | "fichasC" | "citacoes">("overview");
 
   useEffect(() => {
-    return onAuthStateChanged(auth, user => {
-      if (!user) { router.push("/login"); return; }
-      setAuthed(true);
-      loadData();
-    });
+    loadData();
   }, []);
 
   async function loadData() {
     setLoading(true);
-    const [a, b] = await Promise.all([getFichasA(), getFichasB()]);
+    const [a, b, c] = await Promise.all([getFichasA(), getFichasB(), getFichasC()]);
     setFichasA(a);
     setFichasB(b);
+    setFichasC(c);
     setLoading(false);
   }
 
@@ -109,13 +132,31 @@ export default function DashboardPage() {
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wsBData), "Ficha B – Resumo");
 
-    // Sheet 3 – Citações
-    const citData = fichasB.filter(f => f.citacaoPoderosa).map(f => ({
-      "Comunidade": f.comunidade,
+    // Sheet 3 – Ficha C
+    const wsCData = fichasC.map(f => ({
       "Data": f.data,
-      "Citação": f.citacaoPoderosa,
+      "Comunidade": f.comunidade,
+      "Entrevistador": f.entrevistador,
+      "Entrevistado": f.nomeOuCodigoPseudo,
+      "Idade": f.idade,
+      "Género": f.genero,
+      "Tipo de Deficiência": f.tipoDeficiencia,
+      "Principal Barreira": f.barreiraPrincipal,
+      "Solução Proposta": f.solucaoProposta,
+      "Citação Principal": f.citacaoPrincipal,
+      "Disponível Rota Piloto": f.disponivelRota,
+      "Observações": f.observacoesEntrevistador,
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(citData), "Citações Advocacy");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wsCData), "Ficha C – Entrevistas");
+
+    // Sheet 4 – Citações
+    const citDataB = fichasB.filter(f => f.citacaoPoderosa).map(f => ({
+      "Origem": "Grupo Focal", "Comunidade": f.comunidade, "Data": f.data, "Citação": f.citacaoPoderosa,
+    }));
+    const citDataC = fichasC.filter(f => f.citacaoPrincipal).map(f => ({
+      "Origem": "Entrevista Individual", "Comunidade": f.comunidade, "Data": f.data, "Citação": f.citacaoPrincipal,
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([...citDataB, ...citDataC]), "Citações Advocacy");
 
     XLSX.writeFile(wb, `NSB_Relatorio_${new Date().toISOString().slice(0,10)}.xlsx`);
   }
@@ -138,7 +179,7 @@ export default function DashboardPage() {
     loadData();
   }
 
-  if (!authed || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "#f0faf4" }}>
         <div className="text-center">
@@ -165,9 +206,6 @@ export default function DashboardPage() {
             <button onClick={exportExcel} className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-2 rounded-xl transition-all">
               📥 Exportar Excel
             </button>
-            <button onClick={() => signOut(auth)} className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-2 rounded-xl transition-all">
-              Sair
-            </button>
           </div>
         </div>
       </div>
@@ -179,6 +217,7 @@ export default function DashboardPage() {
             { id: "overview", label: "📊 Visão Geral" },
             { id: "fichasA", label: `🏕️ Fichas A (${fichasA.length})` },
             { id: "fichasB", label: `👥 Fichas B (${fichasB.length})` },
+            { id: "fichasC", label: `🎤 Fichas C (${fichasC.length})` },
             { id: "citacoes", label: "💬 Citações" },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id as typeof tab)}
@@ -396,6 +435,66 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* ── FICHAS C ── */}
+        {tab === "fichasC" && (
+          <div className="space-y-3">
+            {fichasC.length === 0 && <div className="bg-white rounded-2xl p-8 text-center text-gray-400">Nenhuma entrevista individual submetida ainda.</div>}
+            {fichasC.map(f => (
+              <div key={f.id} className="bg-white rounded-2xl p-5 shadow-sm">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 className="font-bold text-gray-800">{f.nomeOuCodigoPseudo || "Entrevistado"}</h3>
+                    <p className="text-xs text-gray-400">
+                      {f.data} · {f.comunidade} · {f.entrevistador && `Entrevistador: ${f.entrevistador}`}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {f.idade && `${f.idade} anos`} {f.genero && `· ${f.genero}`} {f.tipoDeficiencia && `· ${f.tipoDeficiencia}`}
+                    </p>
+                  </div>
+                  <button onClick={async () => { if(confirm("Eliminar este registo?")){ await deleteFichaC(f.id!); loadData(); } }}
+                    className="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
+                </div>
+
+                {f.citacaoPrincipal && (
+                  <div className="border-l-4 pl-3 py-1 mb-3" style={{ borderColor: "#1A6B3A" }}>
+                    <p className="text-sm text-gray-700 italic">&ldquo;{f.citacaoPrincipal}&rdquo;</p>
+                  </div>
+                )}
+
+                {f.barreiraPrincipal && (
+                  <div className="bg-red-50 rounded-xl p-3 mb-2">
+                    <p className="text-xs font-bold text-red-600 mb-1">Principal Barreira</p>
+                    <p className="text-sm text-gray-700">{f.barreiraPrincipal}</p>
+                  </div>
+                )}
+                {f.solucaoProposta && (
+                  <div className="bg-green-50 rounded-xl p-3 mb-2">
+                    <p className="text-xs font-bold text-green-700 mb-1">Solução Proposta</p>
+                    <p className="text-sm text-gray-700">{f.solucaoProposta}</p>
+                  </div>
+                )}
+                {f.disponivelRota && (
+                  <p className="text-xs text-gray-500 mt-2">🗺️ Disponível para rota piloto: <strong>{f.disponivelRota}</strong></p>
+                )}
+
+                {f.respostas && Object.keys(f.respostas).length > 0 && (
+                  <details className="mt-3">
+                    <summary className="text-xs font-bold text-green-700 cursor-pointer">Ver respostas completas</summary>
+                    <div className="mt-2 space-y-2">
+                      {Object.entries(f.respostas).filter(([, v]) => v).map(([k, v]) => (
+                        <div key={k} className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-xs font-bold text-gray-400 mb-1">Pergunta {k}</p>
+                          <p className="text-sm text-gray-700">{v}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* ── CITAÇÕES ── */}
         {tab === "citacoes" && (
           <div>
@@ -403,13 +502,13 @@ export default function DashboardPage() {
               <p className="text-sm text-green-800">💡 <strong>Para o relatório de advocacy:</strong> estas citações representam a voz directa das PcD e devem ser usadas para pressionar as autoridades locais e a direcção do PNG.</p>
             </div>
             <div className="space-y-3">
-              {fichasB.filter(f => f.citacaoPoderosa).length === 0 && (
+              {fichasB.filter(f => f.citacaoPoderosa).length === 0 && fichasC.filter(f => f.citacaoPrincipal).length === 0 && (
                 <div className="bg-white rounded-2xl p-8 text-center text-gray-400">Nenhuma citação registada ainda.</div>
               )}
               {fichasB.filter(f => f.citacaoPoderosa).map(f => (
-                <div key={f.id} className="bg-white rounded-2xl p-5 shadow-sm">
+                <div key={`b-${f.id}`} className="bg-white rounded-2xl p-5 shadow-sm">
                   <div className="border-l-4 pl-4 py-2" style={{ borderColor: "#1A6B3A" }}>
-                    <p className="text-base text-gray-800 italic leading-relaxed">"{f.citacaoPoderosa}"</p>
+                    <p className="text-base text-gray-800 italic leading-relaxed">&ldquo;{f.citacaoPoderosa}&rdquo;</p>
                   </div>
                   <p className="text-xs text-gray-400 mt-3">
                     — Participante do grupo focal de <strong>{f.comunidade}</strong>, {f.data}
@@ -420,6 +519,22 @@ export default function DashboardPage() {
                       {f.top3Barreiras.filter(Boolean).map((b, i) => (
                         <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{b}</span>
                       ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {fichasC.filter(f => f.citacaoPrincipal).map(f => (
+                <div key={`c-${f.id}`} className="bg-white rounded-2xl p-5 shadow-sm">
+                  <div className="border-l-4 pl-4 py-2" style={{ borderColor: "#0D4424" }}>
+                    <p className="text-base text-gray-800 italic leading-relaxed">&ldquo;{f.citacaoPrincipal}&rdquo;</p>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-3">
+                    — Entrevista individual, <strong>{f.comunidade}</strong>, {f.data}
+                    {f.idade && ` · ${f.idade} anos`} {f.tipoDeficiencia && `· ${f.tipoDeficiencia}`}
+                  </p>
+                  {f.barreiraPrincipal && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{f.barreiraPrincipal}</span>
                     </div>
                   )}
                 </div>
