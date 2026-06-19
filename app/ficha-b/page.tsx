@@ -192,7 +192,19 @@ export default function FichaBPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <input className={inputClass} value={p.nome} onChange={e => setParticipante(idx, "nome", e.target.value)} placeholder="Nome / pseudónimo" />
                     <input className={inputClass} value={p.idade} onChange={e => setParticipante(idx, "idade", e.target.value)} placeholder="Idade" type="number" min="1" max="120" />
-                    <input className={inputClass} value={p.tipoDeficiencia} onChange={e => setParticipante(idx, "tipoDeficiencia", e.target.value)} placeholder="Tipo de deficiência" />
+                    <select className={inputClass} value={p.tipoDeficiencia} onChange={e => setParticipante(idx, "tipoDeficiencia", e.target.value)}>
+                      <option value="">Tipo de deficiência...</option>
+                      <option>Deficiência Física/Motora</option>
+                      <option>Deficiência Visual</option>
+                      <option>Deficiência Auditiva</option>
+                      <option>Deficiência Intelectual</option>
+                      <option>Deficiência Psicossocial</option>
+                      <option>Albinismo</option>
+                      <option>Deficiência Múltipla</option>
+                      <option>Surdocegueira</option>
+                      <option>Deficiência de Fala/Comunicação</option>
+                      <option>Outra</option>
+                    </select>
                     <select className={inputClass} value={p.genero} onChange={e => setParticipante(idx, "genero", e.target.value as Participante["genero"])}>
                       <option value="">Género...</option>
                       <option>Masculino</option>

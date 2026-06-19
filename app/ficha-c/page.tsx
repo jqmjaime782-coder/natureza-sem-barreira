@@ -351,7 +351,19 @@ export default function FichaCPage() {
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-semibold text-gray-600 mb-1">Tipo de Deficiência</label>
-              <input className={inputClass} value={tipoDeficiencia} onChange={e => setTipoDeficiencia(e.target.value)} placeholder="ex: Motora, Visual, Auditiva, Intelectual, Múltipla..." />
+              <select className={inputClass} value={tipoDeficiencia} onChange={e => setTipoDeficiencia(e.target.value)}>
+                <option value="">Selecionar...</option>
+                <option>Deficiência Física/Motora</option>
+                <option>Deficiência Visual</option>
+                <option>Deficiência Auditiva</option>
+                <option>Deficiência Intelectual</option>
+                <option>Deficiência Psicossocial</option>
+                <option>Albinismo</option>
+                <option>Deficiência Múltipla</option>
+                <option>Surdocegueira</option>
+                <option>Deficiência de Fala/Comunicação</option>
+                <option>Outra</option>
+              </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Desde quando tem esta deficiência?</label>

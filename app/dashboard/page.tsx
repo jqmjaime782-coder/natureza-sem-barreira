@@ -92,6 +92,25 @@ export default function DashboardPage() {
 
   const rotaPilotoSim = fichasA.filter(f => f.incluirRotaPiloto && f.incluirRotaPiloto !== "Não").length;
 
+  // ── Análise demográfica cruzada (Fichas B + C) ─────────────────────────
+  function countBy<T extends Record<string, unknown>>(items: T[], getKey: (item: T) => string | string[] | undefined): Record<string, number> {
+    const acc: Record<string, number> = {};
+    items.forEach(item => {
+      const k = getKey(item);
+      if (!k) return;
+      const keys = Array.isArray(k) ? k : [k];
+      keys.forEach(key => {
+        if (!key) return;
+        acc[key] = (acc[key] || 0) + 1;
+      });
+    });
+    return acc;
+  }
+
+  function sortedEntries(obj: Record<string, number>) {
+    return Object.entries(obj).sort((a, b) => b[1] - a[1]);
+  }
+
   // ── Export helpers ────────────────────────────────────────────────────────
   function exportExcel() {
     const wb = XLSX.utils.book_new();
@@ -193,6 +212,48 @@ export default function DashboardPage() {
   const totalParticipantes = fichasB.reduce((s, f) => s + (parseInt(f.numParticipantes) || 0), 0);
   const totalMulheres = fichasB.reduce((s, f) => s + (parseInt(f.numMulheres) || 0), 0);
 
+  // Total de PcD ouvidas em TODAS as fichas (B = grupo, C = individual)
+  const totalPcDOuvidas = totalParticipantes + fichasC.length;
+
+  // Deficiência: combinar dados de participantes da Ficha B + entrevistados da Ficha C
+  const deficienciasB = fichasB.flatMap(f => f.participantes.map(p => p.tipoDeficiencia).filter(Boolean));
+  const deficienciasC = fichasC.map(f => f.tipoDeficiencia).filter(Boolean);
+  const deficienciaCounts = countBy(
+    [...deficienciasB, ...deficienciasC].map(d => ({ d })),
+    item => item.d
+  );
+
+  // Género: Ficha B participantes + Ficha C entrevistados
+  const generoB = fichasB.flatMap(f => f.participantes.map(p => p.genero).filter(Boolean));
+  const generoC = fichasC.map(f => f.genero).filter(Boolean);
+  const generoCounts = countBy([...generoB, ...generoC].map(g => ({ g })), item => item.g);
+
+  // Comunidades cobertas (B + C)
+  const comunidadesB = fichasB.map(f => f.comunidade).filter(Boolean);
+  const comunidadesC = fichasC.map(f => f.comunidade).filter(Boolean);
+  const comunidadeCounts = countBy([...comunidadesB, ...comunidadesC].map(c => ({ c })), item => item.c);
+
+  // Cruzamento: Deficiência × Disponibilidade para rota piloto (Ficha C)
+  const crossDeficienciaRota: Record<string, { sim: number; talvez: number; nao: number }> = {};
+  fichasC.forEach(f => {
+    if (!f.tipoDeficiencia) return;
+    if (!crossDeficienciaRota[f.tipoDeficiencia]) crossDeficienciaRota[f.tipoDeficiencia] = { sim: 0, talvez: 0, nao: 0 };
+    if (f.disponivelRota === "Sim, com certeza") crossDeficienciaRota[f.tipoDeficiencia].sim++;
+    else if (f.disponivelRota === "Talvez") crossDeficienciaRota[f.tipoDeficiencia].talvez++;
+    else if (f.disponivelRota === "Não por agora") crossDeficienciaRota[f.tipoDeficiencia].nao++;
+  });
+
+  // Faixa etária (Ficha C)
+  const faixaEtariaCounts: Record<string, number> = { "18-25": 0, "26-35": 0, "36-50": 0, "51+": 0, "N/D": 0 };
+  fichasC.forEach(f => {
+    const idade = parseInt(f.idade);
+    if (!idade) { faixaEtariaCounts["N/D"]++; return; }
+    if (idade <= 25) faixaEtariaCounts["18-25"]++;
+    else if (idade <= 35) faixaEtariaCounts["26-35"]++;
+    else if (idade <= 50) faixaEtariaCounts["36-50"]++;
+    else faixaEtariaCounts["51+"]++;
+  });
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -239,7 +300,7 @@ export default function DashboardPage() {
               {[
                 { label: "Locais Avaliados", value: fichasA.length, icon: "🏕️", color: "#1A6B3A" },
                 { label: "Grupos Focais", value: fichasB.length, icon: "👥", color: "#0D4424" },
-                { label: "PcD Ouvidas", value: totalParticipantes, icon: "🎤", color: "#1A6B3A" },
+                { label: "PcD Ouvidas", value: totalPcDOuvidas, icon: "🎤", color: "#1A6B3A" },
                 { label: "Aptas para Rota Piloto", value: rotaPilotoSim, icon: "✅", color: "#0D4424" },
               ].map(kpi => (
                 <div key={kpi.label} className="bg-white rounded-2xl p-4 shadow-sm">
@@ -326,6 +387,125 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+
+            {/* ── DISTRIBUIÇÃO DEMOGRÁFICA E CRUZAMENTOS ── */}
+            <div className="bg-white rounded-2xl p-5 shadow-sm">
+              <h3 className="font-bold text-gray-700 mb-1 text-sm">👥 Distribuição Demográfica das PcD Ouvidas</h3>
+              <p className="text-xs text-gray-400 mb-4">Combina participantes dos grupos focais (Ficha B) e entrevistas individuais (Ficha C) · Total: <strong>{totalPcDOuvidas}</strong> pessoas</p>
+
+              <div className="grid md:grid-cols-2 gap-5">
+                {/* Por tipo de deficiência */}
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Por Tipo de Deficiência</p>
+                  {sortedEntries(deficienciaCounts).length === 0 && <p className="text-xs text-gray-400">Sem dados ainda.</p>}
+                  <div className="space-y-1.5">
+                    {sortedEntries(deficienciaCounts).map(([tipo, count]) => {
+                      const max = Math.max(...Object.values(deficienciaCounts), 1);
+                      return (
+                        <div key={tipo} className="flex items-center gap-2">
+                          <span className="text-xs text-gray-600 w-32 flex-shrink-0 truncate" title={tipo}>{tipo}</span>
+                          <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${(count / max) * 100}%`, background: "#1A6B3A" }} />
+                          </div>
+                          <span className="text-xs font-bold text-gray-700 w-6 text-right">{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Por género */}
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Por Género</p>
+                  {sortedEntries(generoCounts).length === 0 && <p className="text-xs text-gray-400">Sem dados ainda.</p>}
+                  <div className="space-y-1.5">
+                    {sortedEntries(generoCounts).map(([g, count]) => {
+                      const max = Math.max(...Object.values(generoCounts), 1);
+                      const cor = g === "Feminino" ? "#db2777" : g === "Masculino" ? "#2563eb" : "#9ca3af";
+                      return (
+                        <div key={g} className="flex items-center gap-2">
+                          <span className="text-xs text-gray-600 w-24 flex-shrink-0">{g}</span>
+                          <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${(count / max) * 100}%`, background: cor }} />
+                          </div>
+                          <span className="text-xs font-bold text-gray-700 w-6 text-right">{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Por comunidade */}
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Por Comunidade Visitada</p>
+                  {sortedEntries(comunidadeCounts).length === 0 && <p className="text-xs text-gray-400">Sem dados ainda.</p>}
+                  <div className="space-y-1.5">
+                    {sortedEntries(comunidadeCounts).map(([c, count]) => {
+                      const max = Math.max(...Object.values(comunidadeCounts), 1);
+                      return (
+                        <div key={c} className="flex items-center gap-2">
+                          <span className="text-xs text-gray-600 w-24 flex-shrink-0 truncate" title={c}>{c}</span>
+                          <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${(count / max) * 100}%`, background: "#0D4424" }} />
+                          </div>
+                          <span className="text-xs font-bold text-gray-700 w-6 text-right">{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Por faixa etária (Ficha C) */}
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Por Faixa Etária (Entrevistas Individuais)</p>
+                  {fichasC.length === 0 && <p className="text-xs text-gray-400">Sem dados ainda.</p>}
+                  <div className="space-y-1.5">
+                    {Object.entries(faixaEtariaCounts).filter(([, v]) => v > 0).map(([faixa, count]) => {
+                      const max = Math.max(...Object.values(faixaEtariaCounts), 1);
+                      return (
+                        <div key={faixa} className="flex items-center gap-2">
+                          <span className="text-xs text-gray-600 w-24 flex-shrink-0">{faixa} anos</span>
+                          <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${(count / max) * 100}%`, background: "#15803d" }} />
+                          </div>
+                          <span className="text-xs font-bold text-gray-700 w-6 text-right">{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── CRUZAMENTO: DEFICIÊNCIA × DISPONIBILIDADE PARA ROTA PILOTO ── */}
+            {Object.keys(crossDeficienciaRota).length > 0 && (
+              <div className="bg-white rounded-2xl p-5 shadow-sm">
+                <h3 className="font-bold text-gray-700 mb-1 text-sm">🔄 Cruzamento: Tipo de Deficiência × Disponibilidade para Rota Piloto</h3>
+                <p className="text-xs text-gray-400 mb-4">Com base nas entrevistas individuais (Ficha C) — ajuda a planear quem convidar para testar a rota acessível</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-2 text-gray-500 font-semibold">Tipo de Deficiência</th>
+                        <th className="text-center py-2 px-2 text-green-700 font-semibold">✅ Sim, com certeza</th>
+                        <th className="text-center py-2 px-2 text-yellow-600 font-semibold">🤔 Talvez</th>
+                        <th className="text-center py-2 px-2 text-red-500 font-semibold">❌ Não por agora</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(crossDeficienciaRota).map(([tipo, vals]) => (
+                        <tr key={tipo} className="border-b border-gray-100">
+                          <td className="py-2 px-2 text-gray-700 font-medium">{tipo}</td>
+                          <td className="py-2 px-2 text-center font-bold text-green-700">{vals.sim || "–"}</td>
+                          <td className="py-2 px-2 text-center font-bold text-yellow-600">{vals.talvez || "–"}</td>
+                          <td className="py-2 px-2 text-center font-bold text-red-500">{vals.nao || "–"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </>
         )}
 

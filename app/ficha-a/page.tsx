@@ -177,7 +177,19 @@ export default function FichaAPage() {
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-semibold text-gray-600 mb-1">Tipo de Deficiência do Avaliador</label>
-              <input className={inputClass} value={form.tipoDeficienciaAvaliador} onChange={e => setField("tipoDeficienciaAvaliador", e.target.value)} placeholder="ex: Motora, Visual, Auditiva..." />
+              <select className={inputClass} value={form.tipoDeficienciaAvaliador} onChange={e => setField("tipoDeficienciaAvaliador", e.target.value)}>
+                <option value="">Selecionar...</option>
+                <option>Deficiência Física/Motora</option>
+                <option>Deficiência Visual</option>
+                <option>Deficiência Auditiva</option>
+                <option>Deficiência Intelectual</option>
+                <option>Deficiência Psicossocial</option>
+                <option>Albinismo</option>
+                <option>Deficiência Múltipla</option>
+                <option>Surdocegueira</option>
+                <option>Deficiência de Fala/Comunicação</option>
+                <option>Outra</option>
+              </select>
             </div>
           </div>
 
