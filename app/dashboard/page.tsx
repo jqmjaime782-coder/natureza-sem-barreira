@@ -254,6 +254,78 @@ export default function DashboardPage() {
     else faixaEtariaCounts["51+"]++;
   });
 
+  // ── Por local visitado (Ficha A) — comparação entre pontos ────────────────
+  const localStats: Record<string, { count: number; nivelMedio: number; inacessiveis: number }> = {};
+  fichasA.forEach(f => {
+    const local = f.pontoVisitado || "Sem nome";
+    if (!localStats[local]) localStats[local] = { count: 0, nivelMedio: 0, inacessiveis: 0 };
+    localStats[local].count++;
+    if (f.nivelAcessibilidade === "Inacessível") localStats[local].inacessiveis++;
+  });
+
+  // ── RESUMO NARRATIVO AUTOMÁTICO ──────────────────────────────────────────
+  function gerarResumo(): string {
+    const partes: string[] = [];
+
+    // Abertura — escopo da recolha
+    if (fichasA.length === 0 && fichasB.length === 0 && fichasC.length === 0) {
+      return "Ainda não há dados suficientes para gerar um resumo. Este texto será atualizado automaticamente à medida que as fichas forem submetidas no campo.";
+    }
+
+    partes.push(
+      `Entre ${[...new Set([...fichasA.map(f=>f.data), ...fichasB.map(f=>f.data), ...fichasC.map(f=>f.data)])].filter(Boolean).sort()[0] || "—"} e ${[...new Set([...fichasA.map(f=>f.data), ...fichasB.map(f=>f.data), ...fichasC.map(f=>f.data)])].filter(Boolean).sort().slice(-1)[0] || "—"}, a equipa de avaliação do projecto Natureza Sem Barreiras realizou ${fichasA.length} levantamento(s) de acessibilidade no Parque Nacional da Gorongosa, ${fichasB.length} grupo(s) focal(is) e ${fichasC.length} entrevista(s) individual(is) nas comunidades, ouvindo no total ${totalPcDOuvidas} pessoas com deficiência.`
+    );
+
+    // Ficha A — síntese
+    if (fichasA.length > 0) {
+      const inacessiveis = fichasA.filter(f => f.nivelAcessibilidade === "Inacessível").length;
+      const parcial = fichasA.filter(f => f.nivelAcessibilidade === "Parcialmente Acessível").length;
+      const aptos = fichasA.filter(f => f.incluirRotaPiloto && f.incluirRotaPiloto !== "Não").length;
+      const piorCategoria = radarData.reduce((min, r) => r.A < min.A ? r : min, radarData[0]);
+
+      partes.push(
+        `Dos locais avaliados no parque, ${inacessiveis} foram classificados como totalmente inacessíveis e ${parcial} como parcialmente acessíveis. A categoria com pior desempenho médio foi "${piorCategoria.subject}" (${piorCategoria.A.toFixed(1)}/5). ${aptos} de ${fichasA.length} locais avaliados foram considerados aptos, com ou sem adaptações, para integrar a rota turística piloto acessível.`
+      );
+    }
+
+    // Ficha B + C — barreiras e vozes
+    const todasBarreiras = [
+      ...fichasB.flatMap(f => f.top3Barreiras.filter(Boolean)),
+      ...fichasC.map(f => f.barreiraPrincipal).filter(Boolean),
+    ];
+    if (todasBarreiras.length > 0) {
+      const counts = countBy(todasBarreiras.map(b => ({ b })), item => item.b);
+      const top = sortedEntries(counts).slice(0, 3).map(([b]) => b);
+      partes.push(
+        `Nas comunidades, as barreiras mais frequentemente reportadas pelas próprias pessoas com deficiência foram: ${top.join("; ")}. Estas razões de exclusão antecedem, em muitos casos, qualquer barreira física dentro do parque — afectando a decisão de sequer tentar a visita.`
+      );
+    }
+
+    // Disponibilidade para rota piloto
+    const disponiveis = fichasC.filter(f => f.disponivelRota === "Sim, com certeza").length;
+    if (fichasC.length > 0) {
+      partes.push(
+        `Das ${fichasC.length} pessoas entrevistadas individualmente, ${disponiveis} manifestaram disponibilidade total para participar na validação da rota piloto acessível, o que constitui uma base inicial de protagonistas para a fase de testagem do projecto.`
+      );
+    }
+
+    // Citações
+    const numCitacoes = fichasB.filter(f => f.citacaoPoderosa).length + fichasC.filter(f => f.citacaoPrincipal).length;
+    if (numCitacoes > 0) {
+      partes.push(
+        `Foram registadas ${numCitacoes} citações directas que podem ser utilizadas no relatório de advocacia dirigido à Administração do Parque Nacional da Gorongosa e ao Governo do Distrito da Gorongosa.`
+      );
+    }
+
+    return partes.join(" ");
+  }
+
+  const resumoTexto = gerarResumo();
+
+  function copiarResumo() {
+    navigator.clipboard.writeText(resumoTexto);
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -311,6 +383,22 @@ export default function DashboardPage() {
               ))}
             </div>
 
+            {/* ── RESUMO AUTOMÁTICO PARA O RELATÓRIO ── */}
+            <div className="bg-white rounded-2xl p-5 shadow-sm border-l-4" style={{ borderColor: "#1A6B3A" }}>
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div>
+                  <h3 className="font-bold text-gray-700 text-sm">📝 Resumo Automático — Rascunho para o Relatório</h3>
+                  <p className="text-xs text-gray-400">Gerado a partir dos dados actuais · Reveja e ajuste antes de usar no relatório final</p>
+                </div>
+                <button onClick={copiarResumo}
+                  className="flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg text-white transition-all"
+                  style={{ background: "#1A6B3A" }}>
+                  📋 Copiar
+                </button>
+              </div>
+              <p className="text-sm text-gray-700 leading-relaxed mt-3 whitespace-pre-line">{resumoTexto}</p>
+            </div>
+
             <div className="grid md:grid-cols-2 gap-5">
               {/* Radar chart */}
               <div className="bg-white rounded-2xl p-5 shadow-sm">
@@ -344,6 +432,36 @@ export default function DashboardPage() {
                 </ResponsiveContainer>
               </div>
             </div>
+
+            {/* ── COMPARAÇÃO ENTRE LOCAIS VISITADOS (FICHA A) ── */}
+            {Object.keys(localStats).length > 0 && (
+              <div className="bg-white rounded-2xl p-5 shadow-sm">
+                <h3 className="font-bold text-gray-700 mb-1 text-sm">🗺️ Comparação Entre Locais Visitados no PNG</h3>
+                <p className="text-xs text-gray-400 mb-4">Útil para identificar quais pontos do parque precisam de intervenção prioritária</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-2 text-gray-500 font-semibold">Local</th>
+                        <th className="text-center py-2 px-2 text-gray-500 font-semibold">Nº Avaliações</th>
+                        <th className="text-center py-2 px-2 text-red-500 font-semibold">Inacessível</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(localStats).sort((a, b) => b[1].count - a[1].count).map(([local, stats]) => (
+                        <tr key={local} className="border-b border-gray-100">
+                          <td className="py-2 px-2 text-gray-700 font-medium">{local}</td>
+                          <td className="py-2 px-2 text-center text-gray-600">{stats.count}</td>
+                          <td className="py-2 px-2 text-center font-bold" style={{ color: stats.inacessiveis > 0 ? "#dc2626" : "#9ca3af" }}>
+                            {stats.inacessiveis > 0 ? stats.inacessiveis : "–"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Grupos focais summary */}
             <div className="bg-white rounded-2xl p-5 shadow-sm">
