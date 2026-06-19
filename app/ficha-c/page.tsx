@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import SectionHeader from "@/components/SectionHeader";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, Timestamp } from "firebase/firestore";
+import { adicionarFila } from "@/lib/offlineQueue";
+import { SyncBanner } from "@/lib/sync";
 
 // ── Perguntas por bloco ────────────────────────────────────────────────────
 const BLOCOS = [
@@ -229,6 +231,8 @@ export default function FichaCPage() {
     setRespostas(r => ({ ...r, [id]: val }));
   }
 
+  const [savedOffline, setSavedOffline] = useState(false);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!consentimento) {
@@ -237,24 +241,48 @@ export default function FichaCPage() {
     }
     setSaving(true);
     setError("");
+
+    const payload = {
+      numeroEntrevista, data, comunidade, hora, entrevistador,
+      nomeOuCodigoPseudo, idade, genero, tipoDeficiencia,
+      tempoDeficiencia, nivelEducacao, situacaoEmprego,
+      respostas,
+      citacaoPrincipal, barreiraPrincipal, solucaoProposta,
+      disponivelRota, observacoesEntrevistador,
+    };
+
+    if (!navigator.onLine) {
+      await adicionarFila("fichas_c", payload);
+      setSavedOffline(true);
+      setSaving(false);
+      setTimeout(() => router.push("/"), 2500);
+      return;
+    }
+
     try {
-      await addDoc(collection(db, "fichas_c"), {
-        numeroEntrevista, data, comunidade, hora, entrevistador,
-        nomeOuCodigoPseudo, idade, genero, tipoDeficiencia,
-        tempoDeficiencia, nivelEducacao, situacaoEmprego,
-        respostas,
-        citacaoPrincipal, barreiraPrincipal, solucaoProposta,
-        disponivelRota, observacoesEntrevistador,
-        criadoEm: Timestamp.now(),
-      });
+      await addDoc(collection(db, "fichas_c"), { ...payload, criadoEm: Timestamp.now() });
       setSaved(true);
       setTimeout(() => router.push("/"), 2000);
     } catch (err) {
-      setError("Erro ao guardar. Verifique a ligação à internet.");
+      await adicionarFila("fichas_c", payload);
+      setSavedOffline(true);
       console.error(err);
+      setTimeout(() => router.push("/"), 2500);
     } finally {
       setSaving(false);
     }
+  }
+
+  if (savedOffline) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#fffbeb" }}>
+        <div className="text-center p-8 max-w-sm">
+          <div className="text-6xl mb-4">📲</div>
+          <h2 className="text-2xl font-bold text-amber-700">Entrevista guardada no telemóvel!</h2>
+          <p className="text-gray-600 mt-2">Não há internet neste momento. Assim que houver ligação, esta entrevista será enviada automaticamente para a coordenação.</p>
+        </div>
+      </div>
+    );
   }
 
   if (saved) {
@@ -274,6 +302,7 @@ export default function FichaCPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <SyncBanner />
       {/* Top bar */}
       <div className="sticky top-0 z-10 shadow-sm" style={{ background: "#2d6a4f" }}>
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">

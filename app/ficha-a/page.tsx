@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import ScaleInput from "@/components/ScaleInput";
 import SectionHeader from "@/components/SectionHeader";
 import { saveFichaA } from "@/lib/db";
+import { adicionarFila } from "@/lib/offlineQueue";
+import { SyncBanner } from "@/lib/sync";
 import { FichaA, TipoPonto } from "@/lib/types";
 
 const TIPOS_PONTO: TipoPonto[] = [
@@ -101,20 +103,47 @@ export default function FichaAPage() {
     });
   }
 
+  const [savedOffline, setSavedOffline] = useState(false);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError("");
+
+    if (!navigator.onLine) {
+      // Sem internet — guardar na fila local do telemóvel
+      await adicionarFila("fichas_a", form as unknown as Record<string, unknown>);
+      setSavedOffline(true);
+      setSaving(false);
+      setTimeout(() => router.push("/"), 2500);
+      return;
+    }
+
     try {
       await saveFichaA(form);
       setSaved(true);
       setTimeout(() => router.push("/"), 2000);
     } catch (err: unknown) {
-      setError("Erro ao guardar. Verifique a ligação à internet.");
+      // Falhou mesmo com internet (ex: instável) — guardar offline como segurança
+      await adicionarFila("fichas_a", form as unknown as Record<string, unknown>);
+      setSavedOffline(true);
       console.error(err);
+      setTimeout(() => router.push("/"), 2500);
     } finally {
       setSaving(false);
     }
+  }
+
+  if (savedOffline) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#fffbeb" }}>
+        <div className="text-center p-8 max-w-sm">
+          <div className="text-6xl mb-4">📲</div>
+          <h2 className="text-2xl font-bold text-amber-700">Ficha guardada no telemóvel!</h2>
+          <p className="text-gray-600 mt-2">Não há internet neste momento. Assim que houver ligação, esta ficha será enviada automaticamente para a coordenação.</p>
+        </div>
+      </div>
+    );
   }
 
   if (saved) {
@@ -134,6 +163,7 @@ export default function FichaAPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <SyncBanner />
       {/* Top bar */}
       <div className="sticky top-0 z-10 shadow-sm" style={{ background: "#1A6B3A" }}>
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">

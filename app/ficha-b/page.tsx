@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import SectionHeader from "@/components/SectionHeader";
 import { saveFichaB } from "@/lib/db";
+import { adicionarFila } from "@/lib/offlineQueue";
+import { SyncBanner } from "@/lib/sync";
 import { FichaB, Participante } from "@/lib/types";
 
 const BLOCOS = [
@@ -99,20 +101,45 @@ export default function FichaBPage() {
     return form.respostas.find(r => r.pergunta === pergId)?.resposta ?? "";
   }
 
+  const [savedOffline, setSavedOffline] = useState(false);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError("");
+
+    if (!navigator.onLine) {
+      await adicionarFila("fichas_b", form as unknown as Record<string, unknown>);
+      setSavedOffline(true);
+      setSaving(false);
+      setTimeout(() => router.push("/"), 2500);
+      return;
+    }
+
     try {
       await saveFichaB(form);
       setSaved(true);
       setTimeout(() => router.push("/"), 2000);
     } catch (err: unknown) {
-      setError("Erro ao guardar. Verifique a ligação à internet.");
+      await adicionarFila("fichas_b", form as unknown as Record<string, unknown>);
+      setSavedOffline(true);
       console.error(err);
+      setTimeout(() => router.push("/"), 2500);
     } finally {
       setSaving(false);
     }
+  }
+
+  if (savedOffline) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#fffbeb" }}>
+        <div className="text-center p-8 max-w-sm">
+          <div className="text-6xl mb-4">📲</div>
+          <h2 className="text-2xl font-bold text-amber-700">Sessão guardada no telemóvel!</h2>
+          <p className="text-gray-600 mt-2">Não há internet neste momento. Assim que houver ligação, esta sessão será enviada automaticamente para a coordenação.</p>
+        </div>
+      </div>
+    );
   }
 
   if (saved) {
@@ -132,6 +159,7 @@ export default function FichaBPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <SyncBanner />
       <div className="sticky top-0 z-10 shadow-sm" style={{ background: "#0D4424" }}>
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div>
